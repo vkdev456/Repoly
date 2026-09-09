@@ -34,7 +34,7 @@ export default function Login() {
         localStorage.getItem("username")
       );
 
-      navigate("/chat");
+      navigate("/repolyhq");
 
     } catch (error) {
       console.error("LOGIN ERROR:", error);
