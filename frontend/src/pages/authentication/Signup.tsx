@@ -8,11 +8,9 @@ function Singup() {
 
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-
     const [email, setEmail]=useState("");
-     
+    
     const navigate = useNavigate();
-
     const handleSignup = async() => {
 
       try{ 

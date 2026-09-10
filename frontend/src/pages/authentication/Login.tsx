@@ -24,9 +24,7 @@ export default function Login() {
       console.log("USERNAME ENTERED:", username);
 
       const response = await login(request);
-
-      console.log("LOGIN SUCCESS:", response);
-      console.log("USERNAME BEFORE STORAGE:", username);
+      
       localStorage.setItem("token", response.data);
 
       console.log(

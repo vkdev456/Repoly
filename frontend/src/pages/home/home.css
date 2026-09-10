@@ -37,16 +37,15 @@ body,
     transform: scale(1.1);
 }
 
-/* HOME */
-
 .home {
-    height: calc(100vh - 40px);
-    display: flex;
-    align-items: center;
+    min-height: calc(100vh - 40px);
+    padding: 40px;
+    display: grid;
+    grid-template-columns: repeat(2, 350px);
     justify-content: center;
+    align-content: start;
+    gap: 30px;
 }
-
-/* REPO CARD */
 
 .repo {
     width: 350px;
@@ -55,6 +54,8 @@ body,
     border: 1px solid #e5e5e5;
     border-radius: 16px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    display:flex;
+    flex-direction: column;
 }
 
 .repo h2 {

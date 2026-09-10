@@ -8,13 +8,13 @@ import com.repoly.backend.dto.SignupDto;
 import com.repoly.backend.entity.User;
 import com.repoly.backend.exception.InvalidCredentialsException;
 import com.repoly.backend.exception.UserAlreadyExsistsException;
-import com.repoly.backend.repository.UserRepositorty;
+import com.repoly.backend.repository.UserRepository;
 
 @Service 
 public class UserService {
 
     @Autowired
-    private UserRepositorty userRepo;
+    private UserRepository userRepo;
 
     @Autowired
     private JwtService jwtService;

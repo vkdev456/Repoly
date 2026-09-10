@@ -22,6 +22,16 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    private String githubUsername;
+
+    private Long githubId;
+
+    @Column(length = 1000)
+    private String githubAccessToken;
+
+    @Column(length = 1000)
+    private String githubRefreshToken;
+
     public String getEmail() {
         return email;
     }
@@ -46,4 +56,35 @@ public class User {
         this.password = password;
     }
 
+    public String getGithubUsername() {
+        return githubUsername;
+    }
+
+    public Long getGithubId() {
+        return githubId;
+    }
+
+    public void setGithubId(Long githubId) {
+        this.githubId = githubId;
+    }
+
+    public void setGithubUsername(String username) {
+        this.githubUsername = username;
+    }
+
+    public String getGithubAccessToken() {
+        return githubAccessToken;
+    }
+
+    public void setGithubAccessToken(String githubAccessToken) {
+        this.githubAccessToken = githubAccessToken;
+    }
+
+    public String getGithubRefreshToken() {
+        return githubRefreshToken;
+    }
+
+    public void setGithubRefreshToken(String githubRefreshToken) {
+        this.githubRefreshToken = githubRefreshToken;
+    }
 }
