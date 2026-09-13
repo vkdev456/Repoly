@@ -1,6 +1,6 @@
 package com.repoly.backend.service;
 
-import java.util.Map;
+import java.util.*;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -136,7 +136,9 @@ public class GithubService {
             throw new RuntimeException("GitHub account is not connected");
         }
 
-        String url = "https://api.github.com/user/repos" + "?per_page=100" + "&sort=updated";
+        String url = "https://api.github.com/user/repos"
+                + "?per_page=100"
+                + "&sort=updated";
 
         HttpHeaders headers = new HttpHeaders();
 
@@ -146,11 +148,42 @@ public class GithubService {
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
-        return restTemplate.exchange(
+        ResponseEntity<Object[]> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
                 request,
-                Object.class).getBody();
+                Object[].class);
+
+        Object[] repositories = response.getBody();
+
+        if (repositories == null) {
+            return List.of();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Object repositoryObject : repositories) {
+
+            Map<String, Object> repo = (Map<String, Object>) repositoryObject;
+
+            Map<String, Object> ownerData = (Map<String, Object>) repo.get("owner");
+
+            String owner = ownerData.get("login").toString();
+            String repoName = repo.get("name").toString();
+
+            // Total commits
+            long commitsCount = getCommitCount(owner, repoName, user.getGithubAccessToken());
+
+            // Total merged pull requests
+            long mergesCount = getMergedPullRequestCount(owner, repoName, user.getGithubAccessToken());
+
+            repo.put("commits_count", commitsCount);
+            repo.put("merges_count", mergesCount);
+
+            result.add(repo);
+        }
+
+        return result;
     }
 
     public boolean isGithubConnected(String username) {
@@ -160,6 +193,117 @@ public class GithubService {
             return false;
         }
         return user.getGithubAccessToken() != null;
+
     }
 
+    private long getCommitCount(String owner, String repoName, String accessToken) {
+
+        String url = "https://api.github.com/repos/"
+                + owner
+                + "/"
+                + repoName
+                + "/commits?per_page=1";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(accessToken);
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        ResponseEntity<Object[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        String linkHeader = response.getHeaders().getFirst("Link");
+
+        System.out.println("Repo: " + owner + "/" + repoName);
+        System.out.println("Link Header: " + linkHeader);
+
+        if (linkHeader == null) {
+            return response.getBody() == null
+                    ? 0
+                    : response.getBody().length;
+        }
+
+        return getTotalFromLinkHeader(response.getHeaders());
+    }
+
+    private long getTotalFromLinkHeader(HttpHeaders headers) {
+
+        String linkHeader = headers.getFirst("Link");
+
+        if (linkHeader == null) {
+            return 0;
+        }
+
+        // Example:
+        // <https://api.github.com/.../commits?page=2&per_page=1>; rel="next",
+        // <https://api.github.com/.../commits?page=150&per_page=1>; rel="last"
+
+        String[] links = linkHeader.split(",");
+
+        for (String link : links) {
+
+            if (link.contains("rel=\"last\"")) {
+                int pageStart = link.indexOf("page=") + 5;
+                int pageEnd = link.indexOf("&", pageStart);
+
+                if (pageEnd == -1) {
+                    pageEnd = link.indexOf(">", pageStart);
+                }
+
+                return Long.parseLong(link.substring(pageStart, pageEnd));
+            }
+        }
+
+        return 1;
+    }
+
+    private long getMergedPullRequestCount(String owner, String repoName, String accessToken) {
+
+        String url = "https://api.github.com/repos/"
+                + owner
+                + "/"
+                + repoName
+                + "/pulls?state=closed&per_page=100";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(accessToken);
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        ResponseEntity<Object[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        Object[] pullRequests = response.getBody();
+
+        if (pullRequests == null) {
+            return 0;
+        }
+
+        long mergedCount = 0;
+
+        for (Object pullRequestObject : pullRequests) {
+
+            Map<String, Object> pullRequest = (Map<String, Object>) pullRequestObject;
+
+            Object mergedAt = pullRequest.get("merged_at");
+
+            if (mergedAt != null) {
+                mergedCount++;
+            }
+        }
+
+        return mergedCount;
+    }
 }
