@@ -1,7 +1,9 @@
 package com.repoly.backend.service;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -9,7 +11,9 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import com.repoly.backend.entity.GithubRepository;
 import com.repoly.backend.entity.User;
+import com.repoly.backend.repository.GithubRepositoryRepository;
 import com.repoly.backend.repository.UserRepository;
 
 @Service
@@ -29,9 +33,13 @@ public class GithubService {
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
-    public GithubService(JwtService jwtService, UserRepository userRepository) {
+    private final GithubRepositoryRepository githubRepositoryRepository;
+
+    public GithubService(JwtService jwtService, UserRepository userRepository,
+            GithubRepositoryRepository githubRepositoryRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.githubRepositoryRepository = githubRepositoryRepository;
     }
 
     // GitHub authorization URL
@@ -46,7 +54,6 @@ public class GithubService {
                 + "&state=" + state;
     }
 
-    // exchange GitHub code for access token
     public void handleCallback(String code, String state) {
 
         String username = jwtService.extractGithubUsername(state);
@@ -136,6 +143,24 @@ public class GithubService {
             throw new RuntimeException("GitHub account is not connected");
         }
 
+        List<GithubRepository> savedRepositories = githubRepositoryRepository.findByUser(user);
+        CompletableFuture.runAsync(() -> getRepositorieshelper(username));
+
+        return savedRepositories;
+    }
+
+    public void getRepositorieshelper(String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (user.getGithubAccessToken() == null) {
+            throw new RuntimeException("GitHub account is not connected");
+        }
+
         String url = "https://api.github.com/user/repos"
                 + "?per_page=100"
                 + "&sort=updated";
@@ -157,7 +182,7 @@ public class GithubService {
         Object[] repositories = response.getBody();
 
         if (repositories == null) {
-            return List.of();
+            throw new RuntimeException("no repositories found");
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
@@ -177,13 +202,49 @@ public class GithubService {
             // Total merged pull requests
             long mergesCount = getMergedPullRequestCount(owner, repoName, user.getGithubAccessToken());
 
-            repo.put("commits_count", commitsCount);
-            repo.put("merges_count", mergesCount);
+            Long githubRepoId = ((Number) repo.get("id")).longValue();
 
-            result.add(repo);
+            GithubRepository githubRepository = githubRepositoryRepository.findByUserAndGithubRepoId(user,
+                    githubRepoId);
+
+            if (githubRepository == null) {
+                githubRepository = new GithubRepository();
+            }
+
+            githubRepository.setGithubRepoId(githubRepoId);
+
+            githubRepository.setName(repo.get("name").toString());
+
+            githubRepository.setFullName(repo.get("full_name").toString());
+
+            githubRepository.setOwner(owner);
+
+            githubRepository.setHtmlUrl(repo.get("html_url").toString());
+
+            githubRepository.setStars(((Number) repo.get("stargazers_count")).longValue());
+
+            githubRepository.setForks(((Number) repo.get("forks_count")).longValue());
+
+            githubRepository.setWatchers(((Number) repo.get("watchers_count")).longValue());
+
+            githubRepository.setOpenIssues(((Number) repo.get("open_issues_count")).longValue());
+
+            githubRepository.setLanguage(repo.get("language") != null? repo.get("language").toString(): null);
+
+            githubRepository.setCommitsCount(commitsCount);
+
+            githubRepository.setMergesCount(mergesCount);
+
+            githubRepository.setUser(user);
+
+            githubRepositoryRepository.save(githubRepository);
+
+            // repo.put("commits_count", commitsCount);
+            // repo.put("merges_count", mergesCount);
+
+            // result.add(repo);
         }
 
-        return result;
     }
 
     public boolean isGithubConnected(String username) {
@@ -212,11 +273,19 @@ public class GithubService {
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
+        long start = System.currentTimeMillis();
+
         ResponseEntity<Object[]> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
                 request,
                 Object[].class);
+
+        System.out.println(
+                "Commit API for " + owner + "/" + repoName
+                        + " took: "
+                        + (System.currentTimeMillis() - start)
+                        + " ms");
 
         String linkHeader = response.getHeaders().getFirst("Link");
 

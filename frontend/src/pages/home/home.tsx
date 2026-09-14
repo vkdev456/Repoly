@@ -180,27 +180,27 @@ export default function Home() {
 
                                 <div className="stat">
                                     <span>Open Issues</span>
-                                    <strong>{repo.open_issues_count}</strong>
+                                    <strong>{repo.openIssues}</strong>
                                 </div>
 
                                 <div className="stat">
                                     <span>Commits</span>
-                                    <strong>{repo.commits_count}</strong>
+                                    <strong>{repo.commitsCount}</strong>
                                 </div>
 
                                 <div className="stat">
                                     <span>Merges</span>
-                                    <strong>{repo.merges_count}</strong>
+                                    <strong>{repo.mergesCount}</strong>
                                 </div>
 
                                 <div className="stat">
                                     <span>Stars</span>
-                                    <strong>{repo.stargazers_count}</strong>
+                                    <strong>{repo.stars}</strong>
                                 </div>
 
                                 <div className="stat">
                                     <span>Forks</span>
-                                    <strong>{repo.forks_count}</strong>
+                                    <strong>{repo.forks}</strong>
                                 </div>
 
                                 <div className="stat">
