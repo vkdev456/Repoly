@@ -34,6 +34,8 @@ public class GithubRepository {
 
     private String language;
 
+    private Long branches;
+
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -144,5 +146,13 @@ public class GithubRepository {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public long getBranches() {
+        return branches;
+    }
+
+    public void setBranches(long branches) {
+        this.branches = branches;
     }
 }

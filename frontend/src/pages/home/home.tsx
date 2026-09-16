@@ -131,51 +131,6 @@ export default function Home() {
 
                             <h2>{repo.name}</h2>
 
-                            {/* <div className="repo-stats">
-
-                                <div className="stat">
-                                    <span>Open Issues</span>
-                                    <strong>
-                                        {repo.open_issues_count}
-                                    </strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Commits</span>
-                                    <strong>
-                                        {repo.commits_count || 0}
-                                    </strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Merges</span>
-                                    <strong>
-                                        {repo.merges_count || 0}
-                                    </strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Stars</span>
-                                    <strong>
-                                        {repo.stargazers_count}
-                                    </strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Forks</span>
-                                    <strong>
-                                        {repo.forks_count}
-                                    </strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Language</span>
-                                    <strong>
-                                        {repo.language || "N/A"}
-                                    </strong>
-                                </div>
-
-                            </div> */}
                             <div className="repo-stats">
 
                                 <div className="stat">
@@ -194,8 +149,8 @@ export default function Home() {
                                 </div>
 
                                 <div className="stat">
-                                    <span>Stars</span>
-                                    <strong>{repo.stars}</strong>
+                                    <span>Branches</span>
+                                    <strong>{repo.branches}</strong>
                                 </div>
 
                                 <div className="stat">

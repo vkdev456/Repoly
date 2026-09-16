@@ -163,7 +163,8 @@ public class GithubService {
 
         String url = "https://api.github.com/user/repos"
                 + "?per_page=100"
-                + "&sort=updated";
+                + "&sort=updated"
+                + "&visibility=public";
 
         HttpHeaders headers = new HttpHeaders();
 
@@ -185,8 +186,6 @@ public class GithubService {
             throw new RuntimeException("no repositories found");
         }
 
-        List<Map<String, Object>> result = new ArrayList<>();
-
         for (Object repositoryObject : repositories) {
 
             Map<String, Object> repo = (Map<String, Object>) repositoryObject;
@@ -203,6 +202,8 @@ public class GithubService {
             long mergesCount = getMergedPullRequestCount(owner, repoName, user.getGithubAccessToken());
 
             Long githubRepoId = ((Number) repo.get("id")).longValue();
+
+            long branchCount = getBranchCount(owner, repoName, user.getGithubAccessToken());
 
             GithubRepository githubRepository = githubRepositoryRepository.findByUserAndGithubRepoId(user,
                     githubRepoId);
@@ -229,11 +230,13 @@ public class GithubService {
 
             githubRepository.setOpenIssues(((Number) repo.get("open_issues_count")).longValue());
 
-            githubRepository.setLanguage(repo.get("language") != null? repo.get("language").toString(): null);
+            githubRepository.setLanguage(repo.get("language") != null ? repo.get("language").toString() : null);
 
             githubRepository.setCommitsCount(commitsCount);
 
             githubRepository.setMergesCount(mergesCount);
+
+            githubRepository.setBranches(branchCount);
 
             githubRepository.setUser(user);
 
@@ -263,7 +266,7 @@ public class GithubService {
                 + owner
                 + "/"
                 + repoName
-                + "/commits?per_page=1";
+                + "/commits?per_page=100";
 
         HttpHeaders headers = new HttpHeaders();
 
@@ -273,63 +276,51 @@ public class GithubService {
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
-        long start = System.currentTimeMillis();
-
         ResponseEntity<Object[]> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
                 request,
                 Object[].class);
 
-        System.out.println(
-                "Commit API for " + owner + "/" + repoName
-                        + " took: "
-                        + (System.currentTimeMillis() - start)
-                        + " ms");
+        Object[] commits = response.getBody();
 
-        String linkHeader = response.getHeaders().getFirst("Link");
-
-        System.out.println("Repo: " + owner + "/" + repoName);
-        System.out.println("Link Header: " + linkHeader);
-
-        if (linkHeader == null) {
-            return response.getBody() == null
-                    ? 0
-                    : response.getBody().length;
-        }
-
-        return getTotalFromLinkHeader(response.getHeaders());
-    }
-
-    private long getTotalFromLinkHeader(HttpHeaders headers) {
-
-        String linkHeader = headers.getFirst("Link");
-
-        if (linkHeader == null) {
+        if (commits == null || commits.length == 0) {
             return 0;
         }
 
-        // Example:
-        // <https://api.github.com/.../commits?page=2&per_page=1>; rel="next",
-        // <https://api.github.com/.../commits?page=150&per_page=1>; rel="last"
+        String linkHeader = response.getHeaders().getFirst("Link");
 
-        String[] links = linkHeader.split(",");
-
-        for (String link : links) {
-
-            if (link.contains("rel=\"last\"")) {
-                int pageStart = link.indexOf("page=") + 5;
-                int pageEnd = link.indexOf("&", pageStart);
-
-                if (pageEnd == -1) {
-                    pageEnd = link.indexOf(">", pageStart);
-                }
-
-                return Long.parseLong(link.substring(pageStart, pageEnd));
-            }
+        // Only one page
+        if (linkHeader == null) {
+            return commits.length;
         }
 
-        return 1;
+        long lastPage = getLastPage(linkHeader);
+
+        // Only one page
+        if (lastPage <= 1) {
+            return commits.length;
+        }
+
+        // Get the last page
+        String lastPageUrl = "https://api.github.com/repos/"
+                + owner
+                + "/"
+                + repoName
+                + "/commits?per_page=100&page="
+                + lastPage;
+
+        ResponseEntity<Object[]> lastPageResponse = restTemplate.exchange(
+                lastPageUrl,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        Object[] lastPageCommits = lastPageResponse.getBody();
+
+        int lastPageCount = lastPageCommits == null ? 0 : lastPageCommits.length;
+
+        return ((lastPage - 1) * 100) + lastPageCount;
     }
 
     private long getMergedPullRequestCount(String owner, String repoName, String accessToken) {
@@ -374,5 +365,56 @@ public class GithubService {
         }
 
         return mergedCount;
+    }
+
+    // branches
+    private long getBranchCount(String owner, String repoName, String accessToken) {
+
+        String url = "https://api.github.com/repos/"
+                + owner
+                + "/"
+                + repoName
+                + "/branches?per_page=100";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(accessToken);
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        ResponseEntity<Object[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        Object[] branches = response.getBody();
+
+        return branches == null ? 0 : branches.length;
+    }
+
+    private long getLastPage(String linkHeader) {
+
+        String[] links = linkHeader.split(",");
+
+        for (String link : links) {
+
+            if (link.contains("rel=\"last\"")) {
+
+                int pageStart = link.indexOf("page=") + 5;
+                int pageEnd = link.indexOf("&", pageStart);
+
+                if (pageEnd == -1) {
+                    pageEnd = link.indexOf(">", pageStart);
+                }
+
+                return Long.parseLong(
+                        link.substring(pageStart, pageEnd));
+            }
+        }
+
+        return 1;
     }
 }
