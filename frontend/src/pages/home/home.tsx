@@ -27,7 +27,7 @@ export default function Home() {
         try {
 
             const githubUrl = await getGithubAuthorizationUrl();
-
+            console.log("GitHub OAuth URL:", githubUrl);
             window.location.href = githubUrl;
 
         } catch (error) {
@@ -127,6 +127,7 @@ export default function Home() {
                         <div
                             className="repo"
                             key={repo.id}
+                            onClick={() => navigate(`/repository/${repo.id}`)}
                         >
 
                             <h2>{repo.name}</h2>

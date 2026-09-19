@@ -9,11 +9,15 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import com.repoly.backend.dto.CommitDto;
 import com.repoly.backend.entity.GithubRepository;
+import com.repoly.backend.entity.RepositoryBranch;
 import com.repoly.backend.entity.User;
 import com.repoly.backend.repository.GithubRepositoryRepository;
+import com.repoly.backend.repository.RepositoryBranchRepository;
 import com.repoly.backend.repository.UserRepository;
 
 @Service
@@ -35,11 +39,15 @@ public class GithubService {
 
     private final GithubRepositoryRepository githubRepositoryRepository;
 
+    private final RepositoryBranchRepository repositoryBranchRepository;
+
     public GithubService(JwtService jwtService, UserRepository userRepository,
-            GithubRepositoryRepository githubRepositoryRepository) {
+            GithubRepositoryRepository githubRepositoryRepository,
+            RepositoryBranchRepository repositoryBranchRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
         this.githubRepositoryRepository = githubRepositoryRepository;
+        this.repositoryBranchRepository = repositoryBranchRepository;
     }
 
     // GitHub authorization URL
@@ -51,7 +59,8 @@ public class GithubService {
                 + "?client_id=" + clientId
                 + "&redirect_uri=" + redirectUri
                 + "&scope=repo"
-                + "&state=" + state;
+                + "&state=" + state
+                + "&prompt=login";
     }
 
     public void handleCallback(String code, String state) {
@@ -96,6 +105,13 @@ public class GithubService {
 
         String accessToken = (String) tokenData.get("access_token");
         String refreshToken = (String) tokenData.get("refresh_token");
+
+        System.out.println("=== OAUTH TOKEN DEBUG ===");
+        System.out.println("Token received: " + (accessToken != null));
+        System.out.println("Token length: " +
+                (accessToken == null ? 0 : accessToken.length()));
+        System.out.println("Refresh token received: " +
+                (refreshToken != null));
 
         // get github user
         HttpHeaders githubHeaders = new HttpHeaders();
@@ -144,8 +160,20 @@ public class GithubService {
         }
 
         List<GithubRepository> savedRepositories = githubRepositoryRepository.findByUser(user);
-        CompletableFuture.runAsync(() -> getRepositorieshelper(username));
 
+        if (savedRepositories.isEmpty()) {
+
+            // First time: wait for initial sync
+            getRepositorieshelper(username);
+
+            // Read newly saved data
+            savedRepositories = githubRepositoryRepository.findByUser(user);
+
+        } else {
+
+            // data exists return immediately and refresh in background
+            CompletableFuture.runAsync(() -> getRepositorieshelper(username));
+        }
         return savedRepositories;
     }
 
@@ -253,11 +281,45 @@ public class GithubService {
     public boolean isGithubConnected(String username) {
 
         User user = userRepository.getByUsername(username);
-        if (user == null) {
+
+        if (user == null || user.getGithubAccessToken() == null) {
             return false;
         }
-        return user.getGithubAccessToken() != null;
 
+        String url = "https://api.github.com/user";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(user.getGithubAccessToken());
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        try {
+
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    request,
+                    Map.class);
+
+            return response.getStatusCode().is2xxSuccessful();
+
+        } catch (HttpClientErrorException.Unauthorized e) {
+
+            System.out.println("GitHub token is invalid or expired.");
+
+            // Remove stale GitHub connection
+            user.setGithubAccessToken(null);
+            user.setGithubRefreshToken(null);
+            user.setGithubId(null);
+            user.setGithubUsername(null);
+
+            userRepository.save(user);
+
+            return false;
+        }
     }
 
     private long getCommitCount(String owner, String repoName, String accessToken) {
@@ -417,4 +479,179 @@ public class GithubService {
 
         return 1;
     }
+
+    public List<CommitDto> getCommits(Long repoId, String branch, String username) {
+        User user = userRepository.getByUsername(username);
+
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (user.getGithubAccessToken() == null) {
+            throw new RuntimeException("GitHub account is not connected");
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            throw new RuntimeException("Repository not found");
+        }
+
+        String owner = repository.getOwner();
+        String repoName = repository.getName();
+
+        String url = "https://api.github.com/repos/"
+                + owner + "/" + repoName
+                + "/commits?sha=" + branch
+                + "&per_page=30";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(user.getGithubAccessToken());
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        System.out.println("GitHub token exists: "
+                + (user.getGithubAccessToken() != null));
+
+        System.out.println("GitHub token length: "
+                + (user.getGithubAccessToken() == null
+                        ? 0
+                        : user.getGithubAccessToken().length()));
+
+        ResponseEntity<Object[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        Object[] commits = response.getBody();
+
+        List<CommitDto> result = new ArrayList<>();
+
+        if (commits == null) {
+            return result;
+        }
+
+        for (Object commitObject : commits) {
+
+            Map<String, Object> commitData = (Map<String, Object>) commitObject;
+            String sha = commitData.get("sha").toString();
+
+            Map<String, Object> commit = (Map<String, Object>) commitData.get("commit");
+
+            String message = commit.get("message").toString();
+
+            Map<String, Object> author = (Map<String, Object>) commit.get("author");
+
+            String authorName = author.get("name").toString();
+
+            String date = author.get("date").toString();
+
+            CommitDto commitDto = new CommitDto();
+
+            commitDto.setSha(sha);
+            commitDto.setMessage(message);
+            commitDto.setAuthor(authorName);
+            commitDto.setDate(date);
+
+            result.add(commitDto);
+        }
+        return result;
+    }
+
+    public List<String> getBranches(Long repoId, String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (user.getGithubAccessToken() == null) {
+            throw new RuntimeException("GitHub account is not connected");
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            throw new RuntimeException("Repository not found");
+        }
+
+        List<RepositoryBranch> savedBranches = repositoryBranchRepository.findByRepository(repository);
+        if (!savedBranches.isEmpty()) {
+            CompletableFuture.runAsync(() -> syncBranches(repoId, username));
+        } else {
+            syncBranches(repoId, username);
+            savedBranches = repositoryBranchRepository.findByRepository(repository);
+        }
+
+        return savedBranches.stream()
+                .map(RepositoryBranch::getBranchName)
+                .toList();
+    }
+
+    public void syncBranches(Long repoId, String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null || user.getGithubAccessToken() == null) {
+            return;
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            return;
+        }
+
+        String owner = repository.getOwner();
+        String repoName = repository.getName();
+
+        String url = "https://api.github.com/repos/" + owner + "/" + repoName + "/branches?per_page=100";
+
+        HttpHeaders headers = new HttpHeaders();
+
+        headers.setBearerAuth(user.getGithubAccessToken());
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2026-03-10");
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        ResponseEntity<Object[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                Object[].class);
+
+        Object[] branches = response.getBody();
+
+        if (branches == null) {
+            return;
+        }
+
+        for (Object branchObject : branches) {
+
+            Map<String, Object> branch = (Map<String, Object>) branchObject;
+            String branchName = branch.get("name").toString();
+            Map<String, Object> commit = (Map<String, Object>) branch.get("commit");
+
+            String sha = commit.get("sha").toString();
+            RepositoryBranch savedBranch = repositoryBranchRepository.findByRepositoryAndBranchName(repository,
+                    branchName);
+
+            if (savedBranch == null) {
+                savedBranch = new RepositoryBranch();
+                savedBranch.setRepository(repository);
+                savedBranch.setBranchName(branchName);
+            }
+
+            savedBranch.setGithubBranchSha(sha);
+
+            repositoryBranchRepository.save(savedBranch);
+        }
+    }
+
 }

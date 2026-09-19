@@ -1,10 +1,13 @@
 package com.repoly.backend.controller;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import com.repoly.backend.dto.CommitDto;
 import com.repoly.backend.service.GithubService;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -49,5 +52,18 @@ public class GithubController {
         boolean connected = githubService.isGithubConnected(username);
 
         return Map.of("connected", connected);
+    }
+
+    @GetMapping("/repositories/{repoId}/commits")
+    public List<CommitDto> getCommits(@PathVariable Long repoId, @RequestParam String branch,
+            Authentication authentication) {
+
+        return githubService.getCommits(repoId, branch, authentication.getName());
+    }
+
+    @GetMapping("/repositories/{repoId}/branches")
+    public List<String> getBranches(@PathVariable Long repoId,Authentication authentication) {
+
+        return githubService.getBranches(repoId,authentication.getName());
     }
 }

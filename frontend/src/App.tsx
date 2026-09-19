@@ -5,6 +5,7 @@ import LandingPage from './pages/landingpage/LandingPage';
 import Signup from './pages/authentication/Signup';
 import Login from './pages/authentication/Login';
 import Home from './pages/home/home';
+import Repository from './pages/repository/repository';
 
 function App(){
   const [count, setCount] = useState(0)
@@ -17,6 +18,7 @@ function App(){
              <Route path="/signup" element={<Signup></Signup>}/>
              <Route path="/login" element={<Login></Login>}/>
              <Route path="/repolyhq" element={<Home></Home>}/>
+             <Route path="/repository/:repoId" element={<Repository></Repository>}/>
           </Routes>
         </Router>
       </>

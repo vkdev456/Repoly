@@ -1,0 +1,222 @@
+.repository-page {
+    min-height: 100vh;
+    padding: 45px 13.5% 60px;
+
+    background: #ffffff;
+    color: #111111;
+}
+
+
+/* Header */
+
+.repository-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 30px;
+    padding: 25px 35px;
+
+    background: #ffffff;
+
+    border: 1px solid #e1e1e1;
+    border-radius: 18px;
+
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.repository-label {
+    margin: 0 0 6px;
+
+    font-size: 12px;
+    font-weight: 500;
+
+    color: #777777;
+    letter-spacing: 1.5px;
+}
+
+.repository-header h1 {
+    margin: 0;
+
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.repository-description {
+    margin: 7px 0 0;
+
+    font-size: 14px;
+    color: #777777;
+}
+
+
+/* Commit count */
+
+.commit-count {
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+    justify-content: center;
+
+    min-width: 90px;
+    padding: 12px 18px;
+
+    background: #f7f7f7;
+
+    border-radius: 10px;
+}
+
+.commit-count span {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.commit-count small {
+    margin-top: 2px;
+
+    font-size: 12px;
+    color: #777777;
+}
+
+
+/* Commit list */
+
+.commit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+
+/* Commit card */
+
+.commit-card {
+    display: flex;
+    align-items: flex-start;
+
+    padding: 22px 28px;
+
+    background: #ffffff;
+
+    border: 1px solid #e1e1e1;
+    border-radius: 16px;
+
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+
+    transition: 0.2s ease;
+}
+
+.commit-card:hover {
+    transform: translateY(-2px);
+
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+
+/* Commit number */
+
+.commit-number {
+    width: 45px;
+
+    padding-top: 2px;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    color: #999999;
+}
+
+
+/* Commit content */
+
+.commit-content {
+    flex: 1;
+}
+
+.commit-message {
+    margin: 0 0 14px;
+
+    font-size: 17px;
+    font-weight: 600;
+
+    color: #222222;
+}
+
+
+/* Metadata */
+
+.commit-meta {
+    display: flex;
+    align-items: center;
+
+    gap: 22px;
+
+    font-size: 14px;
+
+    color: #777777;
+}
+
+.commit-meta span {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.commit-meta i {
+    font-size: 12px;
+}
+
+
+/* SHA */
+
+.commit-sha {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+
+    margin-top: 14px;
+    padding: 5px 9px;
+
+    background: #f6f6f6;
+
+    border-radius: 6px;
+
+    font-family: monospace;
+    font-size: 12px;
+
+    color: #777777;
+}
+
+.branch-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.branch-selector label {
+    font-size: 12px;
+    color: #777777;
+}
+
+.branch-selector select {
+    min-width: 180px;
+
+    padding: 10px 35px 10px 12px;
+
+    background: #f7f7f7;
+
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+
+    font-size: 14px;
+    color: #222222;
+
+    outline: none;
+
+    cursor: pointer;
+}
+
+.branch-selector select:focus {
+    border-color: #bbbbbb;
+}
