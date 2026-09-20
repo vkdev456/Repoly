@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import com.repoly.backend.dto.CommitDto;
+import com.repoly.backend.entity.PullRequest;
 import com.repoly.backend.entity.RepositoryIssue;
 import com.repoly.backend.service.GithubService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -76,8 +77,14 @@ public class GithubController {
     }
 
     @GetMapping("/repositories/{repoId}/issues")
-    public List<RepositoryIssue> getIssues(@PathVariable Long repoId,@RequestParam(defaultValue = "all") String state,Authentication authentication){
-        return githubService.getIssues(repoId,authentication.getName(),state);
+    public List<RepositoryIssue> getIssues(@PathVariable Long repoId, @RequestParam(defaultValue = "all") String state,
+            Authentication authentication) {
+        return githubService.getIssues(repoId, authentication.getName(), state);
     }
 
+    @GetMapping("/repositories/{repoId}/pull-requests")
+    public List<PullRequest> getPullRequests(@PathVariable Long repoId,@RequestParam(defaultValue = "all") String filter,Authentication authentication){
+
+        return githubService.getPullRequests(repoId,authentication.getName(),filter);
+    }
 }

@@ -47,5 +47,12 @@ export const getGithubRepositoryIssues = async (repoId: number,state: string = "
     return response.data;
 };
 
+export const getGithubRepositoryPullRequests = async (repoId: number,filter: string = "all") => {
+    const response = await api.get(`/repositories/${repoId}/pull-requests`,{
+        params: { filter }
+        }
+    );
+    return response.data;
+};
 
 

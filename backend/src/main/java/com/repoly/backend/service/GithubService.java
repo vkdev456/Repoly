@@ -14,10 +14,12 @@ import org.springframework.web.client.RestTemplate;
 
 import com.repoly.backend.dto.CommitDto;
 import com.repoly.backend.entity.GithubRepository;
+import com.repoly.backend.entity.PullRequest;
 import com.repoly.backend.entity.RepositoryBranch;
 import com.repoly.backend.entity.RepositoryIssue;
 import com.repoly.backend.entity.User;
 import com.repoly.backend.repository.GithubRepositoryRepository;
+import com.repoly.backend.repository.PulllRequestRepository;
 import com.repoly.backend.repository.RepositoryBranchRepository;
 import com.repoly.backend.repository.RepositoryIssueRepository;
 import com.repoly.backend.repository.UserRepository;
@@ -42,16 +44,19 @@ public class GithubService {
     private final GithubRepositoryRepository githubRepositoryRepository;
     private final RepositoryBranchRepository repositoryBranchRepository;
     private final RepositoryIssueRepository repositoryIssueRepository;
+    private final PulllRequestRepository repositoryPullRequestRepository;
 
     public GithubService(JwtService jwtService, UserRepository userRepository,
             GithubRepositoryRepository githubRepositoryRepository,
             RepositoryBranchRepository repositoryBranchRepository,
-            RepositoryIssueRepository repositoryIssueRepository) {
+            RepositoryIssueRepository repositoryIssueRepository,
+            PulllRequestRepository repositoryPullRequestRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
         this.githubRepositoryRepository = githubRepositoryRepository;
         this.repositoryBranchRepository = repositoryBranchRepository;
         this.repositoryIssueRepository = repositoryIssueRepository;
+        this.repositoryPullRequestRepository = repositoryPullRequestRepository;
 
     }
 
@@ -618,6 +623,55 @@ public class GithubService {
         return savedIssues.stream().filter(issue -> issue.getState().equalsIgnoreCase(state)).toList();
     }
 
+    public List<PullRequest> getPullRequests(Long repoId,String username,String filter){
+
+        User user = userRepository.getByUsername(username);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+        if (user.getGithubAccessToken() == null) {
+            throw new RuntimeException("GitHub not connected");
+        }
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+        if (repository == null) {
+            throw new RuntimeException("Repository not found");
+        }
+        List<PullRequest> savedPullRequests = repositoryPullRequestRepository.findByRepository(repository);
+
+        if (savedPullRequests.isEmpty()){
+
+            // First request
+            syncPullRequests(repoId, username);
+            savedPullRequests = repositoryPullRequestRepository.findByRepository(repository);
+        }else{
+            // Existing data
+            CompletableFuture.runAsync(() -> syncPullRequests(repoId, username));
+        }
+
+        if (filter == null || filter.equalsIgnoreCase("all")) {
+            return savedPullRequests;
+        }
+
+        if(filter.equalsIgnoreCase("open")){
+            return savedPullRequests.stream()
+                    .filter(pr -> pr.getState().equalsIgnoreCase("open"))
+                    .toList();
+        }
+
+        if (filter.equalsIgnoreCase("closed")) {
+            return savedPullRequests.stream()
+                    .filter(pr -> pr.getState().equalsIgnoreCase("closed")
+                            && !pr.getMerged())
+                    .toList();
+        }
+
+        if (filter.equalsIgnoreCase("merged")){
+            return savedPullRequests.stream()
+                    .filter(PullRequest::getMerged)
+                    .toList();
+        }
+        return savedPullRequests;
+    }
     // sync
     public void syncBranches(Long repoId, String username) {
 
@@ -711,10 +765,10 @@ public class GithubService {
         try {
 
             ResponseEntity<List> response = restTemplate.exchange(
-                                            url,
-                                            HttpMethod.GET,
-                                            entity,
-                                            List.class);
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    List.class);
 
             List<Map<String, Object>> issues = response.getBody();
 
@@ -731,7 +785,8 @@ public class GithubService {
 
                 Long githubIssueId = ((Number) issueData.get("id")).longValue();
 
-                RepositoryIssue issue = repositoryIssueRepository.findByRepositoryAndGithubIssueId(repository,githubIssueId);
+                RepositoryIssue issue = repositoryIssueRepository.findByRepositoryAndGithubIssueId(repository,
+                        githubIssueId);
 
                 if (issue == null) {
                     issue = new RepositoryIssue();
@@ -748,7 +803,7 @@ public class GithubService {
 
                 Map<String, Object> userData = (Map<String, Object>) issueData.get("user");
 
-                if (userData != null){
+                if (userData != null) {
                     issue.setAuthor((String) userData.get("login"));
                 }
 
@@ -759,8 +814,87 @@ public class GithubService {
                 repositoryIssueRepository.save(issue);
             }
 
-        } catch (Exception e){
-            System.out.println("Failed to sync issues for "+ owner + "/" + repoName+ ": " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("Failed to sync issues for " + owner + "/" + repoName + ": " + e.getMessage());
+        }
+    }
+
+    private void syncPullRequests(Long repoId, String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null || user.getGithubAccessToken() == null) {
+            return;
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            return;
+        }
+
+        String owner = repository.getOwner();
+        String repoName = repository.getName();
+
+        String url = "https://api.github.com/repos/"
+                + owner + "/" + repoName
+                + "/pulls?state=all&per_page=100";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(user.getGithubAccessToken());
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2022-11-28");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+
+            ResponseEntity<List> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    List.class);
+
+            List<Map<String, Object>> pullRequests = response.getBody();
+
+            if (pullRequests == null) {
+                return;
+            }
+
+            for (Map<String, Object> prData : pullRequests) {
+
+                Long githubPrId = ((Number) prData.get("id")).longValue();
+
+                PullRequest pr = repositoryPullRequestRepository.findByRepositoryAndGithubPrId(repository, githubPrId);
+
+                if (pr == null) {
+                    pr = new PullRequest();
+                    pr.setGithubPrId(githubPrId);
+                    pr.setRepository(repository);
+                }
+
+                pr.setPrNumber(((Number) prData.get("number")).intValue());
+
+                pr.setTitle((String) prData.get("title"));
+                pr.setState((String) prData.get("state"));
+
+                // GitHub gives merged information separately
+                // through the merged_at field.
+                pr.setMerged(prData.get("merged_at") != null);
+
+                Map<String, Object> userData = (Map<String, Object>) prData.get("user");
+
+                if (userData != null) {
+                    pr.setAuthor((String) userData.get("login"));
+                }
+                pr.setCreatedAt((String) prData.get("created_at"));
+                pr.setUpdatedAt((String) prData.get("updated_at"));
+
+                repositoryPullRequestRepository.save(pr);
+            }
+
+        } catch (Exception e) {
+            System.out.println("Failed to sync pull requests for " + owner + "/" + repoName + ": " + e.getMessage());
         }
     }
 
