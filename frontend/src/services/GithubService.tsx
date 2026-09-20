@@ -15,6 +15,12 @@ export const getGithubStatus = async () => {
     return response.data;
 };
 
+export const disconnectGithub = async () => {
+    const response = await api.post("/github/disconnect");
+    return response.data;
+};
+
+
 export const getGithubRepository=async()=>{
       const response= await api.post("repositories/${repoId}/commits");
       return response.data;
@@ -26,15 +32,20 @@ export const getGithubRepositoryBranches = async (repoId: number) => {
 };
 
 export const getGithubRepositoryCommits = async (repoId: number,branch: string) => {
-
-    const response = await api.get(
-        `/repositories/${repoId}/commits`,
-        {
-            params: {
-                branch
-            }
+    const response = await api.get(`/repositories/${repoId}/commits`,{
+            params: { branch }
         }
     );
-
     return response.data;
 };
+
+export const getGithubRepositoryIssues = async (repoId: number,state: string = "all") => {
+    const response = await api.get(`/repositories/${repoId}/issues`,{
+        params: { state }
+        }
+    );
+    return response.data;
+};
+
+
+
