@@ -15,9 +15,11 @@ import org.springframework.web.client.RestTemplate;
 import com.repoly.backend.dto.CommitDto;
 import com.repoly.backend.entity.GithubRepository;
 import com.repoly.backend.entity.RepositoryBranch;
+import com.repoly.backend.entity.RepositoryIssue;
 import com.repoly.backend.entity.User;
 import com.repoly.backend.repository.GithubRepositoryRepository;
 import com.repoly.backend.repository.RepositoryBranchRepository;
+import com.repoly.backend.repository.RepositoryIssueRepository;
 import com.repoly.backend.repository.UserRepository;
 
 @Service
@@ -38,16 +40,19 @@ public class GithubService {
     private final UserRepository userRepository;
 
     private final GithubRepositoryRepository githubRepositoryRepository;
-
     private final RepositoryBranchRepository repositoryBranchRepository;
+    private final RepositoryIssueRepository repositoryIssueRepository;
 
     public GithubService(JwtService jwtService, UserRepository userRepository,
             GithubRepositoryRepository githubRepositoryRepository,
-            RepositoryBranchRepository repositoryBranchRepository) {
+            RepositoryBranchRepository repositoryBranchRepository,
+            RepositoryIssueRepository repositoryIssueRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
         this.githubRepositoryRepository = githubRepositoryRepository;
         this.repositoryBranchRepository = repositoryBranchRepository;
+        this.repositoryIssueRepository = repositoryIssueRepository;
+
     }
 
     // GitHub authorization URL
@@ -105,13 +110,6 @@ public class GithubService {
 
         String accessToken = (String) tokenData.get("access_token");
         String refreshToken = (String) tokenData.get("refresh_token");
-
-        System.out.println("=== OAUTH TOKEN DEBUG ===");
-        System.out.println("Token received: " + (accessToken != null));
-        System.out.println("Token length: " +
-                (accessToken == null ? 0 : accessToken.length()));
-        System.out.println("Refresh token received: " +
-                (refreshToken != null));
 
         // get github user
         HttpHeaders githubHeaders = new HttpHeaders();
@@ -513,14 +511,6 @@ public class GithubService {
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
-        System.out.println("GitHub token exists: "
-                + (user.getGithubAccessToken() != null));
-
-        System.out.println("GitHub token length: "
-                + (user.getGithubAccessToken() == null
-                        ? 0
-                        : user.getGithubAccessToken().length()));
-
         ResponseEntity<Object[]> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
@@ -593,6 +583,42 @@ public class GithubService {
                 .toList();
     }
 
+    public List<RepositoryIssue> getIssues(Long repoId, String username, String state) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (user.getGithubAccessToken() == null) {
+            throw new RuntimeException("GitHub not connected");
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            throw new RuntimeException("Repository not found");
+        }
+
+        List<RepositoryIssue> savedIssues = repositoryIssueRepository.findByRepository(repository);
+
+        if (savedIssues.isEmpty()) {
+            syncIssues(repoId, username);
+            savedIssues = repositoryIssueRepository.findByRepository(repository);
+
+        } else {
+            CompletableFuture.runAsync(() -> syncIssues(repoId, username));
+        }
+
+        if (state == null || state.equalsIgnoreCase("all")) {
+            return savedIssues;
+        }
+
+        return savedIssues.stream().filter(issue -> issue.getState().equalsIgnoreCase(state)).toList();
+    }
+
+    // sync
     public void syncBranches(Long repoId, String username) {
 
         User user = userRepository.getByUsername(username);
@@ -652,6 +678,106 @@ public class GithubService {
 
             repositoryBranchRepository.save(savedBranch);
         }
+    }
+
+    private void syncIssues(Long repoId, String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null || user.getGithubAccessToken() == null) {
+            return;
+        }
+
+        GithubRepository repository = githubRepositoryRepository.findById(repoId).orElse(null);
+
+        if (repository == null) {
+            return;
+        }
+
+        String owner = repository.getOwner();
+        String repoName = repository.getName();
+
+        String url = "https://api.github.com/repos/"
+                + owner + "/" + repoName
+                + "/issues?state=all&per_page=100";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(user.getGithubAccessToken());
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("X-GitHub-Api-Version", "2022-11-28");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+
+            ResponseEntity<List> response = restTemplate.exchange(
+                                            url,
+                                            HttpMethod.GET,
+                                            entity,
+                                            List.class);
+
+            List<Map<String, Object>> issues = response.getBody();
+
+            if (issues == null) {
+                return;
+            }
+
+            for (Map<String, Object> issueData : issues) {
+                // GitHub's /issues endpoint also returns Pull Requests.
+                // PRs contain a "pull_request" field.
+                if (issueData.containsKey("pull_request")) {
+                    continue;
+                }
+
+                Long githubIssueId = ((Number) issueData.get("id")).longValue();
+
+                RepositoryIssue issue = repositoryIssueRepository.findByRepositoryAndGithubIssueId(repository,githubIssueId);
+
+                if (issue == null) {
+                    issue = new RepositoryIssue();
+
+                    issue.setGithubIssueId(githubIssueId);
+                    issue.setRepository(repository);
+                }
+
+                issue.setIssueNumber(((Number) issueData.get("number")).intValue());
+
+                issue.setTitle((String) issueData.get("title"));
+
+                issue.setState((String) issueData.get("state"));
+
+                Map<String, Object> userData = (Map<String, Object>) issueData.get("user");
+
+                if (userData != null){
+                    issue.setAuthor((String) userData.get("login"));
+                }
+
+                issue.setCreatedAt((String) issueData.get("created_at"));
+
+                issue.setUpdatedAt((String) issueData.get("updated_at"));
+
+                repositoryIssueRepository.save(issue);
+            }
+
+        } catch (Exception e){
+            System.out.println("Failed to sync issues for "+ owner + "/" + repoName+ ": " + e.getMessage());
+        }
+    }
+
+    public void disconnectGithub(String username) {
+
+        User user = userRepository.getByUsername(username);
+
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        user.setGithubAccessToken(null);
+        user.setGithubRefreshToken(null);
+        user.setGithubId(null);
+        user.setGithubUsername(null);
+
+        userRepository.save(user);
     }
 
 }

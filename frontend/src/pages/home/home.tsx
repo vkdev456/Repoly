@@ -2,11 +2,7 @@ import "./home.css";
 import repolyLogo from "../../assets/Repoly.png";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-    getGithubAuthorizationUrl,
-    getGithubRepositories,
-    getGithubStatus
-} from "../../services/GithubService";
+import { getGithubAuthorizationUrl, getGithubRepositories, getGithubStatus, disconnectGithub } from "../../services/GithubService";
 
 export default function Home() {
 
@@ -34,6 +30,17 @@ export default function Home() {
 
             console.error("GitHub connection failed:", error);
 
+        }
+    };
+
+    const handleDisconnectGithub = async () => {
+        try {
+            await disconnectGithub();
+            setGithubConnected(false);
+            setRepositories([]);
+            setMenuOpen(false);
+        } catch (e) {
+            console.log("Failed to diconnect Github:", e);
         }
     };
 
@@ -89,6 +96,10 @@ export default function Home() {
 
                     {menuOpen && (
                         <div className="dropdown">
+                            <button onClick={handleDisconnectGithub}>
+                                <i className="fa-brands fa-github"></i>
+                                <p>Disconnect GitHub</p>
+                            </button>
 
                             <button onClick={handleSignout}>
                                 <i className="fa-solid fa-right-from-bracket"></i>
@@ -121,53 +132,48 @@ export default function Home() {
                 )}
 
                 {/* GitHub connected */}
-                {githubConnected === true &&
-                    repositories.map(repo => (
+                {githubConnected === true && repositories.map(repo =>
+                (
 
-                        <div
-                            className="repo"
-                            key={repo.id}
-                            onClick={() => navigate(`/repository/${repo.id}`)}
-                        >
+                    <div
+                        className="repo"
+                        key={repo.id}
+                        onClick={() => navigate(`/repository/${repo.id}`)}
+                    >
 
-                            <h2>{repo.name}</h2>
+                        <h2>{repo.name}</h2>
 
-                            <div className="repo-stats">
+                        <div className="repo-stats">
 
-                                <div className="stat">
-                                    <span>Open Issues</span>
-                                    <strong>{repo.openIssues}</strong>
-                                </div>
+                            <div className="stat">
+                                <span>Open Issues</span>
+                                <strong>{repo.openIssues}</strong>
+                            </div>
 
-                                <div className="stat">
-                                    <span>Commits</span>
-                                    <strong>{repo.commitsCount}</strong>
-                                </div>
+                            <div className="stat">
+                                <span>Commits</span>
+                                <strong>{repo.commitsCount}</strong>
+                            </div>
 
-                                <div className="stat">
-                                    <span>Merges</span>
-                                    <strong>{repo.mergesCount}</strong>
-                                </div>
+                            <div className="stat">
+                                <span>Merges</span>
+                                <strong>{repo.mergesCount}</strong>
+                            </div>
 
-                                <div className="stat">
-                                    <span>Branches</span>
-                                    <strong>{repo.branches}</strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Forks</span>
-                                    <strong>{repo.forks}</strong>
-                                </div>
-
-                                <div className="stat">
-                                    <span>Language</span>
-                                    <strong>{repo.language || "N/A"}</strong>
-                                </div>
-
+                            <div className="stat">
+                                <span>Branches</span>
+                                <strong>{repo.branches}</strong>
+                            </div>
+                            
+                            <div className="stat">
+                                <span>Language</span>
+                                <strong>{repo.language || "N/A"}</strong>
                             </div>
 
                         </div>
-                    ))
+
+                    </div>
+                ))
                 }
 
             </div>
