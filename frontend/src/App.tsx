@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import './App.css'
 import {Route,Routes,BrowserRouter as Router} from 'react-router-dom';
 import LandingPage from './pages/landingpage/LandingPage';
@@ -8,8 +7,7 @@ import Home from './pages/home/home';
 import Repository from './pages/repository/repository';
 
 function App(){
-  const [count, setCount] = useState(0)
- 
+
   return(
       <>
         <Router>
